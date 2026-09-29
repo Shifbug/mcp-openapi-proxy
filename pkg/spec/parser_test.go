@@ -43,7 +43,7 @@ func TestLoadSpec_StrictValidation(t *testing.T) {
 	}
 	valid.Paths.Set("/health", &openapi3.PathItem{Get: validOperation("health")})
 
-	endpoints, _, err := LoadSpec(writeDoc(t, valid))
+	endpoints, _, err := LoadSpec(writeDoc(t, valid), true)
 	if err != nil {
 		t.Fatalf("LoadSpec(valid): %v", err)
 	}
@@ -58,8 +58,16 @@ func TestLoadSpec_StrictValidation(t *testing.T) {
 	}
 	invalid.Paths.Set("/broken", &openapi3.PathItem{Get: &openapi3.Operation{Summary: "broken"}})
 
-	if _, _, err := LoadSpec(writeDoc(t, invalid)); err == nil {
+	if _, _, err := LoadSpec(writeDoc(t, invalid), true); err == nil {
 		t.Fatal("expected validation error for invalid spec")
+	}
+
+	endpoints, _, err = LoadSpec(writeDoc(t, invalid), false)
+	if err != nil {
+		t.Fatalf("LoadSpec(invalid, validate=false): %v", err)
+	}
+	if len(endpoints) != 1 {
+		t.Fatalf("expected 1 endpoint with validation disabled, got %d", len(endpoints))
 	}
 }
 

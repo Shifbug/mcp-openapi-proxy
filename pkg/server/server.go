@@ -15,18 +15,19 @@ import (
 
 // Config controls runtime behavior for the MCP proxy.
 type Config struct {
-	SpecSource        string
-	BaseURL           string
-	ToolPrefix        string
-	ExcludeDeprecated bool
-	AllowInsecureHTTP bool
-	MaxBodyBytes      int64
-	AuthProfile       string
+	SpecSource         string
+	BaseURL            string
+	ToolPrefix         string
+	ExcludeDeprecated  bool
+	AllowInsecureHTTP  bool
+	MaxBodyBytes       int64
+	AuthProfile        string
+	SkipSpecValidation bool
 }
 
 // Run loads the spec, generates tools, and starts the MCP stdio server.
 func Run(cfg Config, extraHeaders map[string]string) error {
-	endpoints, _, err := spec.LoadSpec(cfg.SpecSource)
+	endpoints, _, err := spec.LoadSpec(cfg.SpecSource, !cfg.SkipSpecValidation)
 	if err != nil {
 		return fmt.Errorf("load spec: %w", err)
 	}

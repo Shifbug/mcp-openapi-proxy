@@ -23,11 +23,12 @@ type AppliedAuth struct {
 // Resolver resolves OpenAPI security requirements against environment variables
 // and the local OIDC token cache.
 type Resolver struct {
-	profile      string
-	globalBearer string
-	oidc         TokenProvider
-	oidcErr      error
-	oidcLoaded   bool
+	profile       string
+	globalBearer  string
+	credentialEnv map[string]CredentialEnvRefs
+	oidc          TokenProvider
+	oidcErr       error
+	oidcLoaded    bool
 }
 
 // NewResolver creates a resolver scoped to an auth profile.
@@ -89,8 +90,8 @@ func (r *Resolver) applyScheme(ctx context.Context, applied *AppliedAuth, scheme
 		return nil
 
 	case scheme.Type == "http" && strings.EqualFold(scheme.Scheme, "basic"):
-		username := envValue(scheme.Name, "USERNAME")
-		password := envValue(scheme.Name, "PASSWORD")
+		username := r.envValue(scheme.Name, "USERNAME")
+		password := r.envValue(scheme.Name, "PASSWORD")
 		if username == "" || password == "" {
 			return fmt.Errorf("%s requires MCP_AUTH_%s_USERNAME and MCP_AUTH_%s_PASSWORD", scheme.Name, envSchemeName(scheme.Name), envSchemeName(scheme.Name))
 		}
@@ -99,7 +100,7 @@ func (r *Resolver) applyScheme(ctx context.Context, applied *AppliedAuth, scheme
 		return nil
 
 	case scheme.Type == "apiKey":
-		key := envValue(scheme.Name, "KEY")
+		key := r.envValue(scheme.Name, "KEY")
 		if key == "" && strings.EqualFold(scheme.In, "header") && strings.EqualFold(scheme.ParameterName, "Authorization") {
 			// Swagger 2.0 represents bearer tokens as apiKey in Authorization header.
 			// Fall back to OIDC token resolution.
@@ -153,7 +154,7 @@ func (r *Resolver) applyScheme(ctx context.Context, applied *AppliedAuth, scheme
 }
 
 func (r *Resolver) resolveBearerToken(ctx context.Context, schemeName string, allowOIDC bool) (string, error) {
-	if token := envValue(schemeName, "TOKEN"); token != "" {
+	if token := r.envValue(schemeName, "TOKEN"); token != "" {
 		return token, nil
 	}
 	if r.globalBearer != "" {

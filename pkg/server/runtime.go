@@ -108,6 +108,7 @@ func callEndpointArgs(ctx context.Context, ep spec.Endpoint, httpClient *client.
 		"headers":      resp.Headers,
 		"body":         resp.Body,
 	}
+	envelope = redactResponseEnvelope(envelope)
 	warnOnResponseSchemaDrift(ep, resp)
 	return toolResultWithMedia(envelope, resp.StatusCode >= 400, mediaContentForResponse(resp)), nil
 }
@@ -701,6 +702,73 @@ func selectResponseSchema(resp spec.ResponseInfo, contentType string) map[string
 		}
 	}
 	return adaptOutputSchemaForContentType(resp.Content[0].Schema, resp.Content[0].ContentType)
+}
+
+func redactResponseEnvelope(envelope map[string]any) map[string]any {
+	redacted, ok := redactSecretValue(envelope).(map[string]any)
+	if !ok {
+		return envelope
+	}
+	return redacted
+}
+
+func redactSecretValue(value any) any {
+	switch v := value.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(v))
+		for key, item := range v {
+			if isSecretLikeKey(key) {
+				out[key] = "[REDACTED]"
+				continue
+			}
+			out[key] = redactSecretValue(item)
+		}
+		return out
+	case map[string]string:
+		out := make(map[string]string, len(v))
+		for key, item := range v {
+			if isSecretLikeKey(key) {
+				out[key] = "[REDACTED]"
+			} else {
+				out[key] = item
+			}
+		}
+		return out
+	case []any:
+		out := make([]any, len(v))
+		for i, item := range v {
+			out[i] = redactSecretValue(item)
+		}
+		return out
+	case string:
+		trimmed := strings.TrimSpace(v)
+		if trimmed == "" || (trimmed[0] != '{' && trimmed[0] != '[') {
+			return v
+		}
+		var decoded any
+		if err := json.Unmarshal([]byte(trimmed), &decoded); err != nil {
+			return v
+		}
+		redacted := redactSecretValue(decoded)
+		encoded, err := json.Marshal(redacted)
+		if err != nil {
+			return v
+		}
+		return string(encoded)
+	default:
+		return value
+	}
+}
+
+func isSecretLikeKey(key string) bool {
+	normalized := strings.ToLower(key)
+	normalized = strings.NewReplacer("_", "", "-", "", ".", "", " ", "").Replace(normalized)
+	switch normalized {
+	case "apikey", "token", "accesstoken", "refreshtoken", "password", "secret", "clientsecret", "cookie":
+		return true
+	default:
+		return false
+	}
 }
 
 func toolResult(envelope map[string]any, isError bool) *mcp.CallToolResult {

@@ -173,11 +173,47 @@ All configuration is done through environment variables.
 | `MCP_MAX_BODY_BYTES` | No | `10485760` | Maximum response body size to buffer and return |
 | `MCP_ALLOW_INSECURE_HTTP` | No | `0` | Allow sending resolved credentials over non-loopback `http://` URLs |
 | `MCP_EXCLUDE_DEPRECATED` | No | `0` | Skip deprecated endpoints when generating tools |
+| `MCP_SKIP_SPEC_VALIDATION` | No | `0` | Skip global OpenAPI validation at startup; endpoint-level schema defects may surface later during describe/call |
 
 > [!IMPORTANT]
 > **Auth resolution:** `MCP_AUTH_<SCHEME>_*` → global `MCP_AUTH_TOKEN` → OIDC token cache for `MCP_AUTH_PROFILE`.
 >
 > Trailing slashes on `MCP_BASE_URL` are stripped automatically.
+
+### Multi-app mode
+
+Set `MCP_APPS_CONFIG` to a JSON registry to expose many OpenAPI-backed applications through exactly two shared tools: `container_api_discover` and `container_api_call`. `MCP_SPEC` is not required in this mode.
+
+```json
+{
+  "apps": {
+    "radarr": {
+      "spec": "/etc/container-apis/radarr.yaml",
+      "base_url_env": "RADARR_URL",
+      "skip_spec_validation": true,
+      "allow_insecure_http": true,
+      "credentials": {
+        "X-Api-Key": { "key_env": "RADARR_API_KEY" }
+      }
+    },
+    "sonarr": {
+      "spec": "/etc/container-apis/sonarr.yaml",
+      "base_url_env": "SONARR_URL",
+      "skip_spec_validation": true,
+      "allow_insecure_http": true,
+      "credentials": {
+        "X-Api-Key": { "key_env": "SONARR_API_KEY" }
+      }
+    }
+  }
+}
+```
+
+Only environment-variable names are stored in the registry; secret values remain in the process environment and are resolved per app at request time. This prevents credential collisions when multiple applications use the same OpenAPI security-scheme name. JSON API responses are recursively redacted for common secret-like keys before being returned to the MCP client.
+
+`container_api_discover` lists apps when called without `app`, searches an app when given filters such as `q`, and returns the full contract when given `app` plus `operation` (or `toolName`). `container_api_call` takes `app`, `operation`, and the same `path` / `query` / `headers` / `cookies` / `body` sections as single-spec call mode.
+
+Single-spec mode is unchanged and continues to expose the existing three prefixed navigator/executor tools.
 
 ## Commands
 

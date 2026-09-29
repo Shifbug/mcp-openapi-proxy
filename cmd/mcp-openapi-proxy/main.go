@@ -48,9 +48,19 @@ func main() {
 }
 
 func runServe() error {
+	extraHeaders := parseExtraHeaders(os.Getenv("MCP_EXTRA_HEADERS"))
+	maxBodyBytes, err := parseInt64Env("MCP_MAX_BODY_BYTES", 10<<20)
+	if err != nil {
+		return err
+	}
+
+	if appsConfig := strings.TrimSpace(os.Getenv("MCP_APPS_CONFIG")); appsConfig != "" {
+		return server.RunMultiApp(appsConfig, extraHeaders, maxBodyBytes)
+	}
+
 	specSource := os.Getenv("MCP_SPEC")
 	if specSource == "" {
-		return fmt.Errorf("MCP_SPEC environment variable is required (path or URL to OpenAPI spec)")
+		return fmt.Errorf("MCP_SPEC environment variable is required unless MCP_APPS_CONFIG is set")
 	}
 
 	toolPrefix := os.Getenv("MCP_TOOL_PREFIX")
@@ -58,20 +68,15 @@ func runServe() error {
 		toolPrefix = "api"
 	}
 
-	extraHeaders := parseExtraHeaders(os.Getenv("MCP_EXTRA_HEADERS"))
-	maxBodyBytes, err := parseInt64Env("MCP_MAX_BODY_BYTES", 10<<20)
-	if err != nil {
-		return err
-	}
-
 	cfg := server.Config{
-		SpecSource:        specSource,
-		BaseURL:           strings.TrimRight(os.Getenv("MCP_BASE_URL"), "/"),
-		ToolPrefix:        toolPrefix,
-		ExcludeDeprecated: parseBoolEnv("MCP_EXCLUDE_DEPRECATED"),
-		AllowInsecureHTTP: parseBoolEnv("MCP_ALLOW_INSECURE_HTTP"),
-		MaxBodyBytes:      maxBodyBytes,
-		AuthProfile:       resolveAuthProfile(toolPrefix),
+		SpecSource:         specSource,
+		BaseURL:            strings.TrimRight(os.Getenv("MCP_BASE_URL"), "/"),
+		ToolPrefix:         toolPrefix,
+		ExcludeDeprecated:  parseBoolEnv("MCP_EXCLUDE_DEPRECATED"),
+		AllowInsecureHTTP:  parseBoolEnv("MCP_ALLOW_INSECURE_HTTP"),
+		MaxBodyBytes:       maxBodyBytes,
+		AuthProfile:        resolveAuthProfile(toolPrefix),
+		SkipSpecValidation: parseBoolEnv("MCP_SKIP_SPEC_VALIDATION"),
 	}
 
 	return server.Run(cfg, extraHeaders)
@@ -207,7 +212,7 @@ func resolveOIDCScopesFromEnv(env map[string]string) string {
 	if specSource == "" {
 		return ""
 	}
-	_, doc, err := loadSpec(specSource)
+	_, doc, err := loadSpec(specSource, true)
 	if err != nil || doc == nil {
 		return ""
 	}

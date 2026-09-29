@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -377,5 +378,28 @@ func TestMultipartWriterPreservesExplicitPartContentType(t *testing.T) {
 	partCT = part.Header.Get("Content-Type")
 	if partCT != "text/plain" {
 		t.Fatalf("part content type = %q", partCT)
+	}
+}
+
+func TestRedactSecretValue_RedactsSecretsInsideJSONString(t *testing.T) {
+	input := map[string]any{
+		"addition": `{"root_folder_id":"root","refresh_token":"refresh-secret","AccessToken":"access-secret","cookie":"session=secret","safe":"keep"}`,
+	}
+	redacted := redactResponseEnvelope(input)
+	raw, ok := redacted["addition"].(string)
+	if !ok {
+		t.Fatalf("addition type = %T, want string", redacted["addition"])
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
+		t.Fatalf("redacted addition is not valid JSON: %v", err)
+	}
+	for _, key := range []string{"refresh_token", "AccessToken", "cookie"} {
+		if decoded[key] != "[REDACTED]" {
+			t.Fatalf("%s = %#v, want [REDACTED]", key, decoded[key])
+		}
+	}
+	if decoded["safe"] != "keep" {
+		t.Fatalf("safe = %#v, want keep", decoded["safe"])
 	}
 }

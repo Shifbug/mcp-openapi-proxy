@@ -58,7 +58,7 @@ func statusCode(t *testing.T, env map[string]any) int {
 
 func loadEndpoints(t *testing.T, specPath string) []spec.Endpoint {
 	t.Helper()
-	eps, _, err := spec.LoadSpec(specPath)
+	eps, _, err := spec.LoadSpec(specPath, true)
 	if err != nil {
 		t.Fatalf("LoadSpec(%s): %v", specPath, err)
 	}

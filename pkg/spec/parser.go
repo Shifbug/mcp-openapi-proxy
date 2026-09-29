@@ -9,10 +9,13 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+	"os"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/getkin/kin-openapi/openapi2"
+	"github.com/getkin/kin-openapi/openapi2conv"
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
@@ -21,9 +24,21 @@ const (
 	methodOptions = "OPTIONS"
 )
 
-// LoadSpec loads, validates, and normalizes an OpenAPI 3.x spec from a local
-// file path or HTTP(S) URL.
-func LoadSpec(source string) ([]Endpoint, *openapi3.T, error) {
+// LoadSpec loads and normalizes an OpenAPI 3.x spec from a local file path or
+// HTTP(S) URL. Validation is performed when validate is true.
+func LoadSpec(source string, validate bool) ([]Endpoint, *openapi3.T, error) {
+	if doc, detected, err := loadSwagger2AsOpenAPI3(source); detected {
+		if err != nil {
+			return nil, nil, err
+		}
+		if validate {
+			if err := doc.Validate(context.Background()); err != nil {
+				return nil, nil, fmt.Errorf("validate converted Swagger 2 spec %s: %w", source, err)
+			}
+		}
+		return extractEndpoints(doc), doc, nil
+	}
+
 	loader := openapi3.NewLoader()
 	loader.IsExternalRefsAllowed = true
 
@@ -46,11 +61,49 @@ func LoadSpec(source string) ([]Endpoint, *openapi3.T, error) {
 		return nil, nil, fmt.Errorf("load spec from %s: %w", source, err)
 	}
 
-	if err := doc.Validate(context.Background()); err != nil {
-		return nil, nil, fmt.Errorf("validate spec %s: %w", source, err)
+	if validate {
+		if err := doc.Validate(context.Background()); err != nil {
+			return nil, nil, fmt.Errorf("validate spec %s: %w", source, err)
+		}
 	}
 
 	return extractEndpoints(doc), doc, nil
+}
+
+// loadSwagger2AsOpenAPI3 detects a JSON Swagger 2.0 document and normalizes it
+// through kin-openapi's converter. Non-Swagger inputs return detected=false so
+// the existing OpenAPI 3 loader remains the canonical path.
+func loadSwagger2AsOpenAPI3(source string) (*openapi3.T, bool, error) {
+	data, err := readSpecSource(source)
+	if err != nil {
+		return nil, false, nil
+	}
+	var probe struct {
+		Swagger string `json:"swagger"`
+	}
+	if err := json.Unmarshal(data, &probe); err != nil || probe.Swagger != "2.0" {
+		return nil, false, nil
+	}
+	var doc2 openapi2.T
+	if err := json.Unmarshal(data, &doc2); err != nil {
+		return nil, true, fmt.Errorf("parse Swagger 2 spec %s: %w", source, err)
+	}
+	doc3, err := openapi2conv.ToV3(&doc2)
+	if err != nil {
+		return nil, true, fmt.Errorf("convert Swagger 2 spec %s: %w", source, err)
+	}
+	return doc3, true, nil
+}
+
+func readSpecSource(source string) ([]byte, error) {
+	if isHTTP(source) {
+		u, err := url.Parse(source)
+		if err != nil {
+			return nil, err
+		}
+		return httpReadFromURI(nil, u)
+	}
+	return os.ReadFile(source)
 }
 
 // CollectOAuthScopes returns all scopes referenced by security requirements in
