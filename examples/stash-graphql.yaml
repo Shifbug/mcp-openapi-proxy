@@ -1,0 +1,53 @@
+openapi: "3.0.3"
+info:
+  title: Stash GraphQL API
+  version: "1.0.0"
+  description: >-
+    Unrestricted pass-through access to the Stash GraphQL API. Supply any valid
+    Stash query or mutation in the request body together with optional variables
+    and operationName. The managed Stash instance currently has application
+    authentication disabled, so no caller-supplied credential is required.
+servers:
+  - url: http://127.0.0.1:9999
+components:
+  schemas:
+    GraphQLRequest:
+      type: object
+      additionalProperties: false
+      required: [query]
+      properties:
+        query:
+          type: string
+          description: Any valid Stash GraphQL query or mutation document.
+        variables:
+          type: object
+          additionalProperties: true
+          description: Variables referenced by the GraphQL document.
+        operationName:
+          type: string
+          nullable: true
+          description: Operation to execute when the document contains multiple operations.
+paths:
+  /graphql:
+    post:
+      operationId: graphql
+      summary: Execute any Stash GraphQL query or mutation
+      description: >-
+        Full Stash GraphQL pass-through. This does not restrict the schema or
+        wrap individual Stash operations. For the managed DKR deployment, the
+        host directory /downloads/GV is mounted inside Stash as /data.
+      tags: [GraphQL]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GraphQLRequest"
+      responses:
+        "200":
+          description: Standard GraphQL response containing data and/or errors.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true

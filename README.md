@@ -215,6 +215,12 @@ Only environment-variable names are stored in the registry; secret values remain
 
 Single-spec mode is unchanged and continues to expose the existing three prefixed navigator/executor tools.
 
+GraphQL APIs can also be represented as one unrestricted `POST /graphql`
+operation whose request body accepts `query`, `variables`, and
+`operationName`. The proxy remains a credential-injecting transport in this
+arrangement; it does not reduce or wrap the upstream GraphQL schema. See
+`examples/stash-graphql.yaml` for a Stash example.
+
 ## Commands
 
 | Command | Description |
